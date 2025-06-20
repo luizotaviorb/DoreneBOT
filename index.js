@@ -1,10 +1,13 @@
+const express = require("express");
+const app = express();
+const port = process.env.PORT || 3000;
 const fs = require("fs");
 const TelegramBot = require("node-telegram-bot-api");
 const { getAiResponse } = require("./ai.js");
 const userData = require("./user-data.js");
 
 require("dotenv").config();
-const { TOKEN } = process.env;
+const { TOKEN_BOT } = process.env;
 const MAX_FREE_INTERACTIONS = 4;
 const STRIPE_PRIVATE_LINK = "https://bit.ly/your-girlfriend";
 const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID);
@@ -21,7 +24,7 @@ const LOCAL_IMAGES = [
   path.join(__dirname, "images", "naked2.webp"),
 ];
 
-const bot = new TelegramBot(TOKEN, { polling: true });
+const bot = new TelegramBot(TOKEN_BOT, { polling: true });
 
 // Inicializa os dados do usuário ao iniciar o bot
 async function startBot() {
@@ -306,4 +309,8 @@ bot.on("message", async (msg) => {
   }
 });
 
-console.log("Bot is running...");
+app.get("/", (req, res) => {
+  res.send("Bot is alive and running!");
+});
+
+app.listen(port, () => {});
