@@ -46,13 +46,13 @@ bot.onText(/\/start/, async (msg) => {
   try {
     await bot.sendPhoto(chatId, fs.createReadStream(biquiniImagePath), {
       caption:
-        "Hello, honey! I'm your girlfriend. What do you want to talk about? To see more photos, just ask...😈",
+        "Hello, honey! I'm your girlfriend. What do you want to talk about? To see more photos, just ask... 😈",
     });
   } catch (error) {
     console.error("Erro ao enviar foto no /start:", error);
     bot.sendMessage(
       chatId,
-      "Hello baby! I am your girlfriend. What do you want talk about? To see more photos, you need to be a subscriber. 💖"
+      "Hello baby! I am your girlfriend. What do you want talk about? To see more photos, just ask... 😈"
     );
   }
 });
