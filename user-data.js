@@ -1,47 +1,80 @@
-const fs = require("fs").promises;
-const path = require("path");
+const { Pool } = require("pg");
+require("dotenv").config();
 
-const USER_DATA_FILE = path.join(__dirname, "user-data.json");
-let userStatesCache = {};
+const DATABASE_URL = process.env.DATABASE_URL;
 
-async function loadUsers() {
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
+
+async function initDb() {
   try {
-    const data = await fs.readFile(USER_DATA_FILE, "utf8");
-    userStatesCache = JSON.parse(data);
-    console.log("Dados de usuários carregados do arquivo JSON.");
+    await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                chatId TEXT PRIMARY KEY,
+                interactions INTEGER DEFAULT 0,
+                isSubscribed BOOLEAN DEFAULT FALSE
+            );
+        `);
+    console.log(
+      "Tabela de usuários verificada/criada no PostgreSQL (Supabase)."
+    );
   } catch (error) {
-    if (error.code === "ENOENT") {
-      console.log("Arquivo de dados de usuários não encontrado, criando novo.");
-      userStatesCache = {};
-      await saveUsers();
-    } else {
-      console.error("Erro ao carregar dados de usuários:", error);
-      userStatesCache = {};
+    console.error(
+      "Erro ao conectar ou criar tabela no PostgreSQL (Supabase):",
+      error
+    );
+    process.exit(1);
+  }
+}
+
+async function getUserState(chatId) {
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE chatId = $1", [
+      chatId,
+    ]);
+    if (result.rows.length > 0) {
+      return result.rows[0];
     }
-  }
-}
-
-async function saveUsers() {
-  try {
-    const data = JSON.stringify(userStatesCache, null, 2);
-    await fs.writeFile(USER_DATA_FILE, data, "utf8");
+    return null;
   } catch (error) {
-    console.error("Erro ao salvar dados de usuários:", error);
+    console.error(
+      "Erro ao obter estado do usuário do PostgreSQL (Supabase):",
+      error
+    );
+    throw error;
   }
-}
-
-function getUserState(chatId) {
-  return userStatesCache[chatId] ? { ...userStatesCache[chatId] } : null;
 }
 
 async function updateUserState(chatId, newState) {
-  userStatesCache[chatId] = { ...userStatesCache[chatId], ...newState };
-  await saveUsers();
+  try {
+    const query = `
+            INSERT INTO users (chatId, interactions, isSubscribed)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (chatId) DO UPDATE SET
+                interactions = $2,
+                isSubscribed = $3;
+        `;
+    const values = [
+      chatId,
+      newState.interactions || 0,
+      newState.isSubscribed || false,
+    ];
+    await pool.query(query, values);
+  } catch (error) {
+    console.error(
+      "Erro ao atualizar/inserir estado do usuário no PostgreSQL (Supabase):",
+      error
+    );
+    throw error;
+  }
 }
 
 module.exports = {
-  loadUsers,
-  saveUsers,
+  initDb,
   getUserState,
   updateUserState,
 };

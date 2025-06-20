@@ -1,7 +1,7 @@
 const fs = require("fs");
 const TelegramBot = require("node-telegram-bot-api");
 const { getAiResponse } = require("./ai.js");
-const userData = require("./user-data2.js");
+const userData = require("./user-data.js");
 
 require("dotenv").config();
 const { TOKEN } = process.env;
@@ -25,8 +25,8 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 // Inicializa os dados do usuário ao iniciar o bot
 async function startBot() {
-  await userData.loadUsers();
-  console.log("Bot conectado ao Telegram e dados de usuários carregados.");
+  await userData.initDb();
+  console.log("Bot conectado ao Telegram e banco de dados inicializado.");
 }
 startBot();
 
