@@ -1,61 +1,70 @@
-const express = require("express");
-const app = express();
-const port = process.env.PORT || 3000;
-const fs = require("fs");
+require("dotenv").config();
+const initWebServer = require("./server.js");
 const TelegramBot = require("node-telegram-bot-api");
 const { getAiResponse } = require("./ai.js");
 const userData = require("./user-data.js");
-
-require("dotenv").config();
-const { TOKEN_BOT } = process.env;
+const { TOKEN_BOT, PORT } = process.env;
 const MAX_FREE_INTERACTIONS = 4;
 const STRIPE_PRIVATE_LINK = "https://bit.ly/your-girlfriend";
 const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID);
 
 const path = require("path");
 
-// Lista de arquivos das fotos'
-const LOCAL_IMAGES = [
-  path.join(__dirname, "images", "biquini-azul.webp"),
-  path.join(__dirname, "images", "biquini.webp"),
-  path.join(__dirname, "images", "jeans.webp"),
-  path.join(__dirname, "images", "mini-shorts.webp"),
-  path.join(__dirname, "images", "naked.webp"),
-  path.join(__dirname, "images", "naked2.webp"),
+// URls das fotos no Supabase.
+const URL_IMAGES = [
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//biquini-azul.webp",
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//biquini.webp",
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//jeans.webp",
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//mini-shorts.webp",
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//naked.webp",
+  "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//naked2.webp",
 ];
 
-const bot = new TelegramBot(TOKEN_BOT, { polling: true });
+const bot = new TelegramBot(TOKEN_BOT, { polling: true, fileData: "buffer" });
 
-// Inicializa os dados do usuário ao iniciar o bot
+// Inicializa os dados do usuário ao iniciar o bot.
 async function startBot() {
   await userData.initDb();
   console.log("Bot conectado ao Telegram e banco de dados inicializado.");
+  const webPort = parseInt(PORT) || 4000;
+  initWebServer(webPort);
 }
+
+// Inicia o bot, a conexão com o banco de dados e o servidor web.
 startBot();
 
 // Escutando comando /start
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
+  const userName =
+    msg.from.username ||
+    msg.from.first_name + (msg.from.last_name ? " " + msg.from.last_name : "");
+
   let userState = await userData.getUserState(chatId);
 
   if (!userState) {
     await userData.updateUserState(chatId, {
+      chatId: chatId,
       interactions: 0,
       isSubscribed: false,
+      username: userName,
     });
+
+    userState = await userData.getUserState(chatId);
   }
+
   const biquiniImagePath = path.join(__dirname, "images", "biquini.webp");
 
   try {
-    await bot.sendPhoto(chatId, fs.createReadStream(biquiniImagePath), {
+    await bot.sendPhoto(chatId, biquiniImagePath, {
       caption:
-        "Hello, honey! I'm your girlfriend. What do you want to talk about? To see more photos, just ask... 😈",
+        "Hello, honey! I'm your girlfriend. What do you want to talk about? To see more photos, just ask...😈",
     });
   } catch (error) {
     console.error("Erro ao enviar foto no /start:", error);
     bot.sendMessage(
       chatId,
-      "Hello baby! I am your girlfriend. What do you want talk about? To see more photos, just ask... 😈"
+      "Hello baby! I am your girlfriend. What do you want talk about? 💖"
     );
   }
 });
@@ -63,7 +72,7 @@ bot.onText(/\/start/, async (msg) => {
 // Ativar um usuário, somente se for o administrador.
 bot.onText(/\/activate (\d+)/, async (msg, match) => {
   const adminChatId = msg.chat.id;
-  const targetChatId = parseInt(match[1]); // O ID do usuário a ser ativado
+  const targetChatId = parseInt(match[1]);
 
   if (adminChatId !== ADMIN_CHAT_ID) {
     bot.sendMessage(
@@ -75,27 +84,36 @@ bot.onText(/\/activate (\d+)/, async (msg, match) => {
 
   let userState = await userData.getUserState(targetChatId);
 
-  if (userState) {
-    userState.isSubscribed = true;
-    userState.interactions = 0; // Zera as interações gratuitas após a assinatura
-    await userData.updateUserState(targetChatId, userState); // Salva o novo estado
+  if (userState && userState.isSubscribed) {
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} ativado como assinante.`
+      `Usuário ID: ${targetChatId}, já é assinante. Nenhuma ação necessária.`
+    );
+    return;
+  }
+
+  if (userState) {
+    userState.isSubscribed = true;
+    userState.interactions = 0;
+    await userData.updateUserState(targetChatId, userState);
+    bot.sendMessage(
+      adminChatId,
+      `Usuário ID: ${targetChatId}, ativado como assinante.`
     );
     bot.sendMessage(
       targetChatId,
       `Congratulations, my love! Your subscription has been activated! 🎉 Now we can chat without limits. I’m so happy! ❤️`
     );
   } else {
-    // Se o usuário não foi encontrado, cria ele já como assinante
     await userData.updateUserState(targetChatId, {
+      chatId: targetChatId,
       interactions: 0,
       isSubscribed: true,
+      username: null,
     });
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} não encontrado nos registros, mas foi criado e ativado como assinante.`
+      `Usuário ID: ${targetChatId}, não encontrado nos registros, mas foi criado e ativado como assinante.`
     );
     bot.sendMessage(
       targetChatId,
@@ -125,7 +143,7 @@ bot.onText(/\/deactivate (\d+)/, async (msg, match) => {
 
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} desativado (não é mais assinante).`
+      `Usuário ID: ${targetChatId} desativado (não é mais assinante).`
     );
     bot.sendMessage(
       targetChatId,
@@ -139,7 +157,7 @@ bot.onText(/\/deactivate (\d+)/, async (msg, match) => {
   } else {
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} não encontrado nos registros.`
+      `Usuário ID: ${targetChatId} não encontrado nos registros.`
     );
   }
 });
@@ -147,7 +165,7 @@ bot.onText(/\/deactivate (\d+)/, async (msg, match) => {
 // Resetar interações de um usuário, somente se for o administrador.
 bot.onText(/\/reset (\d+)/, async (msg, match) => {
   const adminChatId = msg.chat.id;
-  const targetChatId = parseInt(match[1]); // O ID do usuário a ser resetado
+  const targetChatId = parseInt(match[1]);
 
   // Verifica se quem está usando o comando é o administrador
   if (adminChatId !== ADMIN_CHAT_ID) {
@@ -163,11 +181,11 @@ bot.onText(/\/reset (\d+)/, async (msg, match) => {
   if (userState) {
     userState.isSubscribed = false;
     userState.interactions = 0;
-    await userData.updateUserState(targetChatId, userState); // Salva o estado resetado
+    await userData.updateUserState(targetChatId, userState);
 
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} resetado (não assinante, 0 interações).`
+      `Usuário ID: ${targetChatId} resetado (não assinante, 0 interações).`
     );
     bot.sendMessage(
       targetChatId,
@@ -177,7 +195,7 @@ bot.onText(/\/reset (\d+)/, async (msg, match) => {
     // Se o usuário não existe, informa ao admin
     bot.sendMessage(
       adminChatId,
-      `Usuário ${targetChatId} não encontrado para resetar.`
+      `Usuário ID: ${targetChatId} não encontrado para resetar.`
     );
   }
 });
@@ -201,6 +219,7 @@ bot.onText(/\/confirm/, async (msg) => {
   );
 });
 
+// Enviar foto para o usuário, somente se for assinante.
 bot.onText(/\/sentphoto/, async (msg) => {
   const chatId = msg.chat.id;
   let userState = await userData.getUserState(chatId);
@@ -218,16 +237,17 @@ bot.onText(/\/sentphoto/, async (msg) => {
     return;
   }
 
-  if (LOCAL_IMAGES.length > 0) {
-    const randomIndex = Math.floor(Math.random() * LOCAL_IMAGES.length);
-    const imagePath = LOCAL_IMAGES[randomIndex];
+  // Se o usuário é assinante, tenta enviar a foto
+  if (URL_IMAGES.length > 0) {
+    const randomIndex = Math.floor(Math.random() * URL_IMAGES.length);
+    const imagePath = URL_IMAGES[randomIndex];
 
     try {
-      await bot.sendPhoto(chatId, fs.createReadStream(imagePath), {
+      await bot.sendPhoto(chatId, imagePath, {
         caption: "Here's something special just for you, my dear! 😘",
       });
     } catch (error) {
-      console.error("Erro ao enviar foto local:", error);
+      console.error("Erro ao enviar foto do Supabase:", error);
       bot.sendMessage(
         chatId,
         "Oh my love, I couldn't send you the picture right now. Try again later! 😔"
@@ -245,18 +265,23 @@ bot.onText(/\/sentphoto/, async (msg) => {
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
+  const userName =
+    msg.from.username ||
+    msg.from.first_name + (msg.from.last_name ? " " + msg.from.last_name : "");
+
   if (text && text.startsWith("/")) {
     return;
   }
 
   let userState = await userData.getUserState(chatId);
   if (!userState) {
-    // Se o usuário não existe no JSON (nova conversa/bot reiniciado antes do /start)
+    // Se o usuário não existe no banco (nova conversa/bot reiniciado antes do /start)
     await userData.updateUserState(chatId, {
       interactions: 0,
       isSubscribed: false,
+      userName: userName,
     });
-    userState = await userData.getUserState(chatId); // Recarrega userState após a criação para ter a referência correta
+    userState = await userData.getUserState(chatId);
   }
 
   if (userState.isSubscribed) {
@@ -278,7 +303,7 @@ bot.on("message", async (msg) => {
     if (userState.interactions < MAX_FREE_INTERACTIONS) {
       userState.interactions++;
       console.log(
-        `User ${chatId} interaction count: ${userState.interactions}`
+        `User ${chatId} free interaction count: ${userState.interactions}`
       );
       await userData.updateUserState(chatId, {
         interactions: userState.interactions,
@@ -308,9 +333,3 @@ bot.on("message", async (msg) => {
     }
   }
 });
-
-app.get("/", (req, res) => {
-  res.send("Bot is alive and running!");
-});
-
-app.listen(port, () => {});
