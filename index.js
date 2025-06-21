@@ -8,8 +8,6 @@ const MAX_FREE_INTERACTIONS = 4;
 const STRIPE_PRIVATE_LINK = "https://bit.ly/your-girlfriend";
 const ADMIN_CHAT_ID = parseInt(process.env.ADMIN_CHAT_ID);
 
-const path = require("path");
-
 // URls das fotos no Supabase.
 const URL_IMAGES = [
   "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images//biquini-azul.webp",
@@ -53,10 +51,11 @@ bot.onText(/\/start/, async (msg) => {
     userState = await userData.getUserState(chatId);
   }
 
-  const biquiniImagePath = path.join(__dirname, "images", "biquini.webp");
+  const biquiniImageUrl =
+    "https://cpfluclaazxluwtklskq.supabase.co/storage/v1/object/public/bot-images/biquini.webp";
 
   try {
-    await bot.sendPhoto(chatId, biquiniImagePath, {
+    await bot.sendPhoto(chatId, biquiniImageUrl, {
       caption:
         "Hello, honey! I'm your girlfriend. What do you want to talk about? To see more photos, just ask...😈",
     });
@@ -240,10 +239,10 @@ bot.onText(/\/sentphoto/, async (msg) => {
   // Se o usuário é assinante, tenta enviar a foto
   if (URL_IMAGES.length > 0) {
     const randomIndex = Math.floor(Math.random() * URL_IMAGES.length);
-    const imagePath = URL_IMAGES[randomIndex];
+    const imageUrl = URL_IMAGES[randomIndex];
 
     try {
-      await bot.sendPhoto(chatId, imagePath, {
+      await bot.sendPhoto(chatId, imageUrl, {
         caption: "Here's something special just for you, my dear! 😘",
       });
     } catch (error) {
